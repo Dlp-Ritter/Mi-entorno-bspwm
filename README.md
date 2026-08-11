@@ -468,6 +468,6 @@ ACTION=="add", SUBSYSTEM=="pci", ATTR{device}=="0x0000:00:14.0", ATTR{power/wake
 ACTION=="add", SUBSYSTEM=="pci", ATTR{device}=="0x0000:00:1c.0", ATTR{power/wakeup}="disabled"
 ACTION=="add", SUBSYSTEM=="pci", ATTR{device}=="0x0000:00:1c.2", ATTR{power/wakeup}="disabled"
 
-#Tener descargado xss-lock y i3lock-fancy, colocar esta linea en el bspwmrc:
-xss-lock --transfer-sleep-lock -- i3lock-fancy &
+#Tener descargado xss-lock y i3lock colocar esta linea en el bspwmrc:
+xss-lock --transfer-sleep-lock -- i3lock -i ~/.config/bspwm/lock.png -t &
 ```
