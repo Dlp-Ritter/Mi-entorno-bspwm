@@ -118,22 +118,20 @@ Descargar la fuente Hack Nerds Fonts desde esta web: https://www.nerdfonts.com/;
 ``` bash
 cd /usr/local/share/fonts
 sudo mv ~/Descargas/Hack.zip .
-sudo unzip
-sudo rm unzip
+sudo unzip Hack.zip
+sudo rm Hack.zip
 ```
 
 Instalar Zsh
 
 ``` bash
 sudo apt install zsh
-#Complementos
-sudo apt install zsh-autosuggestions zsh-syntax-highlighting
 ```
 
-Instalar Feh, para la capturas de pantalla
+Instalar Feh y pcmanfm
 
 ``` bash
-sudo apt install feh
+sudo apt install feh pcmanfm
 ```
 
 
@@ -161,7 +159,7 @@ sxhkd:
 
 ``` bash
 # ======================================================
-# Teclas de Función (F1 - F12)
+# Teclas de Función (F1 - F12) - ThinkPad Yoga S1
 # ======================================================
 
 # F1: Silenciar Audio
@@ -213,9 +211,157 @@ XF86LaunchA
 
 # F12: Abrir Gestor de Archivos (en el directorio personal)
 XF86Explorer
-    thunar ~
+    pcmanfm ~
 ```
 
+Script para el gestion de pantallas y proyector: en /bspwm/scrips
+
+display-menu.sh
+``` bash
+#!/usr/bin/env bash
+# display-menu.sh — menú tipo xfce4-display-settings para elegir modo
+# al conectar un proyector/pantalla externa vía HDMI.
+
+set -euo pipefail
+
+INTERNAL=$(xrandr --query | grep " connected" | grep -E "eDP|LVDS" | cut -d" " -f1 | head -n1)
+EXTERNAL=$(xrandr --query | grep " connected" | grep -vE "eDP|LVDS" | cut -d" " -f1 | head -n1)
+
+# Fallback si nunca ha corrido el rotador (nitrogen no usa esta variable)
+WALLPAPER="$HOME/Pictures/wallpaper.jpg"
+
+reapply_wallpaper() {
+    sleep 1   # da tiempo a que xrandr aplique el nuevo layout antes de redibujar
+
+    if command -v nitrogen >/dev/null; then
+        nitrogen --restore
+    elif command -v feh >/dev/null; then
+        CURRENT_FILE="$HOME/.cache/current_wallpaper"
+        if [[ -f "$CURRENT_FILE" ]]; then
+            IMG=$(<"$CURRENT_FILE")
+        else
+            IMG="$WALLPAPER"
+        fi
+        ACTIVE_OUTPUTS=$(xrandr --query | grep " connected" | wc -l)
+        IMAGES=()
+        for ((i=0; i<ACTIVE_OUTPUTS; i++)); do
+            IMAGES+=("$IMG")
+        done
+        feh --bg-fill "${IMAGES[@]}"
+    fi
+}
+
+if [[ -z "$EXTERNAL" ]]; then
+    notify-send "Pantallas" "No se detectó ninguna pantalla externa conectada."
+    exit 0
+fi
+
+OPTIONS="Solo interna
+Solo externa
+Duplicar (mirror)
+Extender (derecha)
+Extender (izquierda)"
+
+CHOICE=$(echo "$OPTIONS" | rofi -dmenu -p "Modo de pantalla" -i)
+
+case "$CHOICE" in
+    "Solo interna")
+        xrandr --output "$EXTERNAL" --off --output "$INTERNAL" --auto
+        ;;
+    "Solo externa")
+        xrandr --output "$INTERNAL" --off --output "$EXTERNAL" --auto
+        ;;
+    "Duplicar (mirror)")
+        xrandr --output "$INTERNAL" --auto --output "$EXTERNAL" --auto --same-as "$INTERNAL"
+        ;;
+    "Extender (derecha)")
+        xrandr --output "$INTERNAL" --auto --output "$EXTERNAL" --auto --right-of "$INTERNAL"
+        ;;
+    "Extender (izquierda)")
+        xrandr --output "$INTERNAL" --auto --output "$EXTERNAL" --auto --left-of "$INTERNAL"
+        ;;
+    *)
+        exit 0
+        ;;
+esac
+
+reapply_wallpaper
+
+notify-send "Pantallas" "Modo aplicado: $CHOICE"
+
+command -v bspc >/dev/null && bspc wm -r || true
+
+reapply_wallpaper
+
+notify-send "Pantallas" "Modo aplicado: $CHOICE"
+
+command -v bspc >/dev/null && bspc wm -r || true
+```
+
+opcional con feh, un script para cambiar el fondo de manera autoamtica, probar si conviven bien con el script de arriba:
+
+wallpaper-rotate.sh
+``` bash
+#!/usr/bin/env bash
+# wallpaper-rotate.sh — rota wallpapers en orden secuencial (no aleatorio)
+# cada N minutos, usando feh, soportando cualquier formato de imagen
+# y respetando multi-monitor (duplica la misma imagen en cada pantalla activa).
+
+set -euo pipefail
+
+WALLPAPER_DIR="$HOME/Pictures/wallpapers"   # ajusta a tu carpeta real
+INTERVAL_SECONDS=600                          # 10 minutos
+STATE_FILE="$HOME/.cache/wallpaper_index"
+CURRENT_FILE="$HOME/.cache/current_wallpaper"  # leído también por display-menu.sh
+
+mkdir -p "$(dirname "$STATE_FILE")"
+
+# Extensiones soportadas (cualquier formato común de imagen)
+shopt -s nullglob nocaseglob
+IMAGES=("$WALLPAPER_DIR"/*.{jpg,jpeg,png,bmp,webp,gif,tiff,tif})
+shopt -u nocaseglob
+
+if [[ ${#IMAGES[@]} -eq 0 ]]; then
+    notify-send "Wallpaper" "No se encontraron imágenes en $WALLPAPER_DIR"
+    exit 1
+fi
+
+# Orden estable y determinista (alfabético), no depende del orden del filesystem
+IFS=$'\n' IMAGES=($(printf '%s\n' "${IMAGES[@]}" | sort)); unset IFS
+
+apply_current() {
+    local img="$1"
+    ACTIVE_OUTPUTS=$(xrandr --query | grep " connected" | wc -l)
+    local ARGS=()
+    for ((i=0; i<ACTIVE_OUTPUTS; i++)); do
+        ARGS+=("$img")
+    done
+    feh --bg-fill "${ARGS[@]}"
+    echo "$img" > "$CURRENT_FILE"
+}
+
+# Índice actual (persiste entre reinicios del rotador)
+if [[ -f "$STATE_FILE" ]]; then
+    INDEX=$(<"$STATE_FILE")
+else
+    INDEX=0
+fi
+
+while true; do
+    # Si el índice quedó fuera de rango (ej. borraste imágenes), reinicia
+    if (( INDEX >= ${#IMAGES[@]} )); then
+        INDEX=0
+    fi
+
+    CURRENT_IMG="${IMAGES[$INDEX]}"
+    apply_current "$CURRENT_IMG"
+    echo "$INDEX" > "$STATE_FILE"
+
+    sleep "$INTERVAL_SECONDS"
+
+    INDEX=$(( (INDEX + 1) % ${#IMAGES[@]} ))
+done
+```
 
 Instalar oh my zsh y powerlevel10k
 
@@ -252,6 +398,9 @@ plugins=(git zsh-autosuggestions zsh-syntax-highlighting)
 ### Aplica los cambios
 
 exec zsh
+
+setear zsh
+chsh -s $(which zsh)
 
 ```
 
@@ -296,7 +445,7 @@ wmname LG3D &
 Instalar # i3lock-fancy para el bloqueo de pantalla
 
 ``` bash
-sudo apt install i3lock-fancy
+sudo apt install i3lock-fancy xss-lock 
 ```
 
 configurar el comportamiento de suspender al cerrar la tapa del portatil:
@@ -308,4 +457,17 @@ sudo nano /etc/systemd/logind.conf
 HandleLidSwitch=suspend
 HandleLidSwitchExternalPower=suspend
 HandleLidSwitchDocked=ignore
+LidSwitchIgnoreInhibited=yes
+```
+Configuraciones para que se suspenda el portatil al cerrar la tapa, aplica a mi hardware cambiar los valores segun sea necesario:
+``` bash
+sudo nano /etc/udev/rules.d/90-yoga-suspend.rules
+
+#Pegar dentro:
+ACTION=="add", SUBSYSTEM=="pci", ATTR{device}=="0x0000:00:14.0", ATTR{power/wakeup}="disabled"
+ACTION=="add", SUBSYSTEM=="pci", ATTR{device}=="0x0000:00:1c.0", ATTR{power/wakeup}="disabled"
+ACTION=="add", SUBSYSTEM=="pci", ATTR{device}=="0x0000:00:1c.2", ATTR{power/wakeup}="disabled"
+
+#Tener descargado xss-lock y i3lock-fancy, colocar esta linea en el bspwmrc:
+xss-lock --transfer-sleep-lock -- i3lock-fancy &
 ```

@@ -5,6 +5,7 @@ pgrep -x sxhkd > /dev/null || sxhkd &
 picom &
 nitrogen --restore & 
 nm-applet &
+xss-lock --transfer-sleep-lock -- i3lock-fancy &
 #mons -a &
 
 ~/.config/polybar/launch.sh &
