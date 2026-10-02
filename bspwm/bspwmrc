@@ -5,14 +5,16 @@ pgrep -x sxhkd > /dev/null || sxhkd &
 picom &
 nitrogen --restore & 
 nm-applet &
-xss-lock --transfer-sleep-lock -- i3lock-fancy &
+#xss-lock --transfer-sleep-lock -- env XSECURELOCK_BLANK_TIMEOUT=0 xsecurelock &
+xss-lock --transfer-sleep-lock -- i3lock -i ~/.config/bspwm/lock.png -t &
 #mons -a &
 
 ~/.config/polybar/launch.sh &
+~/.config/bspwm/scrips/monitores.sh &
 
 
+#bspc monitor -d I II III IV V VI VII VIII IX X
 
-bspc monitor -d I II III IV V VI VII VIII IX X
 
 bspc config border_width         2
 bspc config window_gap           5
@@ -26,3 +28,6 @@ bspc rule -a Chromium desktop='^2'
 bspc rule -a mplayer2 state=floating
 bspc rule -a Kupfer.py focus=on
 bspc rule -a Screenkey manage=off
+
+#Para las pruebas con selenium u otros donde chrome o cualquier cosa necesite verse en pantalla completa o pantalla flotante:
+bspc rule -a Google-chrome state=floating recntangle=1024x768+0+0 center=on
